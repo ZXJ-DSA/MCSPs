@@ -11,17 +11,17 @@ using namespace gbxxl;
 
 int main(int argc, char** argv)
 {
-//    if( argc < 5 || argc > 8 ){
-//        printf("usage:\n<arg1> name of dataset, e.g. USA\n");
-//        printf("<arg2> average partition size (KB), e.g. 256, default: 256\n");
-//        printf("<arg3> number of criteria, e.g. 3, default: 3\n");
-//        printf("<arg4> (optional) algorithm, e.g. 1: OHP, 2: MHP, 3: BMHP, 4: OHP(w), 5: MHP(w), 6: BMHP(w), default: 3\n");
-//        printf("<arg5> (optional) run time, e.g. 10, default: 100\n");
-//        printf("<arg6> (optional) query type, e.g. S, M, L, default: S\n");
-//        printf("<arg7> (optional) memory size (MB), e.g. 1760, default: 1760\n");
-//        printf("Other parameters have to be modified manually in head.h file. Sorry for the inconvenience.\n");
-//        exit(0);
-//    }
+   if( argc < 5 || argc > 8 ){
+       printf("usage:\n<arg1> name of dataset, e.g. USA\n");
+       printf("<arg2> average partition size (KB), e.g. 256, default: 256\n");
+       printf("<arg3> number of criteria, e.g. 3, default: 3\n");
+       printf("<arg4> (optional) algorithm, e.g. 1: OHP, 2: MHP, 3: BMHP, 4: OHP(w), 5: MHP(w), 6: BMHP(w), default: 3\n");
+       printf("<arg5> (optional) run time, e.g. 10, default: 100\n");
+       printf("<arg6> (optional) query type, e.g. S, M, L, default: S\n");
+       printf("<arg7> (optional) memory size (MB), e.g. 1760, default: 1760\n");
+       printf("Other parameters have to be modified manually in head.h file. Sorry for the inconvenience.\n");
+       exit(0);
+   }
 
     //ofstream fout("log_results.txt");
     //streambuf* pOld = cout.rdbuf(fout.rdbuf());
