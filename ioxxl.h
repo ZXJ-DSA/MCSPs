@@ -33,25 +33,32 @@ namespace ioxxl{
     //for OneHop, MultiHops
     typedef stxxl::VECTOR_GENERATOR<MCEdgeT,BlockPerPage,PageNumberIO,Block_SZ>::result VectorMCEdgesEMTuple_IO; //4*32*256KB=32MB
     //for BiMultiHops
-    typedef stxxl::VECTOR_GENERATOR<MCEdgeT,BlockPerPage,PageNumberIO_Bi,Block_SZ>::result VectorMCEdgesEMTuple_IO_Bi; //4*32*256KB=32MB
+    typedef stxxl::VECTOR_GENERATOR<MCEdgeT,BlockPerPage,PageNumberIO_Bi,Block_SZ>::result VectorMCEdgesEMTuple_IO_Bi; //4*32*256KB=32MB MCEdgeT
     ///for algorithms without io optimization
     //for Dijkstra_IO
-    typedef stxxl::VECTOR_GENERATOR<MCEdgeT,BlockPerPage,PageNumber_DijkIO,Block_SZ>::result VectorMCEdgesEMTuple_DijkIO;
+    typedef stxxl::VECTOR_GENERATOR<MCEdgeT,BlockPerPage,PageNumber4_Dijk,Block_SZ>::result VectorMCEdgesEMTuple4_DijkIO;// 32MB, MCEdgeT
+    typedef stxxl::VECTOR_GENERATOR<MCEdgeT,BlockPerPage,PageNumber_DijkIO,Block_SZ>::result VectorMCEdgesEMTuple_DijkIO;//MCEdgeT
     //for BiDijkstra_IO
-    typedef stxxl::VECTOR_GENERATOR<MCEdgeT,BlockPerPage,PageNumber_BiDijkIO,Block_SZ>::result VectorMCEdgesEMTuple_BiDijkIO;
+    typedef stxxl::VECTOR_GENERATOR<MCEdgeT,BlockPerPage,PageNumber4_BiDijk,Block_SZ>::result VectorMCEdgesEMTuple4_BiDijkIO;// 32MB, MCEdgeT
+    typedef stxxl::VECTOR_GENERATOR<MCEdgeT,BlockPerPage,PageNumber_BiDijkIO,Block_SZ>::result VectorMCEdgesEMTuple_BiDijkIO;//MCEdgeT
     //for OneHop_NoIO and MultiHops_NoIO
-    typedef stxxl::VECTOR_GENERATOR<MCEdgeT,BlockPerPage,PageNumber_NoIO,Block_SZ>::result VectorMCEdgesEMTuple_NoIO;
+    typedef stxxl::VECTOR_GENERATOR<MCEdgeT,BlockPerPage,PageNumber4_NoIO,Block_SZ>::result VectorMCEdgesEMTuple4_NoIO;// 32MB, MCEdgeT
+    typedef stxxl::VECTOR_GENERATOR<MCEdgeT,BlockPerPage,PageNumber_NoIO,Block_SZ>::result VectorMCEdgesEMTuple_NoIO;//MCEdgeT
     //for BiMultiHops_NoIO
-    typedef stxxl::VECTOR_GENERATOR<MCEdgeT,BlockPerPage,PageNumber_NoIO_Bi,Block_SZ>::result VectorMCEdgesEMTuple_NoIO_Bi;     //4*PageNumber*256KB = BASIC_SZ for algorithms without io optimization
-//    typedef stxxl::VECTOR_GENERATOR<EdgePair>::result VectorEdgePairs;
+    typedef stxxl::VECTOR_GENERATOR<MCEdgeT,BlockPerPage,PageNumber4_NoIO_Bi,Block_SZ>::result VectorMCEdgesEMTuple4_NoIO_Bi;// 32MB, MCEdgeT
+    typedef stxxl::VECTOR_GENERATOR<MCEdgeT,BlockPerPage,PageNumber_NoIO_Bi,Block_SZ>::result VectorMCEdgesEMTuple_NoIO_Bi;     //4*PageNumber*256KB = BASIC_SZ for algorithms without io optimization MCEdgeT
+    typedef stxxl::VECTOR_GENERATOR<EdgePair>::result VectorEdgePairs;
     /*** Priority Queue ***/
     //overall memory cost for one priority queue is about 50MB in practice
-    typedef stxxl::PRIORITY_QUEUE_GENERATOR<VertexCost, PQCompareLess, MEMORY_FOR_PRIORITY_QUEUE, PRIORITY_QUEUE_MAX_SIZE/sizeof(VertexCost)>::result PriorityQueue;
+    typedef stxxl::PRIORITY_QUEUE_GENERATOR<VertexCost, PQCompareLess, MEMORY_FOR_PRIORITY_QUEUE, PRIORITY_QUEUE_MAX_SIZE>::result PriorityQueue;
     stxxl::read_write_pool<PriorityQueue::block_type> PQ_Pool((mem_for_pools / 2) / PriorityQueue::block_type::raw_size, (mem_for_pools / 2) / PriorityQueue::block_type::raw_size);
+    typedef stxxl::PRIORITY_QUEUE_GENERATOR<VertexCost, PQCompareLess, MEMORY_FOR_PRIORITY_QUEUE, PRIORITY_QUEUE_MAX_SIZE_BI>::result PriorityQueue2;
+    stxxl::read_write_pool<PriorityQueue2::block_type> PQ_Pool2((mem_for_pools / 2) / PriorityQueue2::block_type::raw_size, (mem_for_pools / 2) / PriorityQueue2::block_type::raw_size);
     typedef stxxl::PRIORITY_QUEUE_GENERATOR<pair<uint,EdgePair>, PQEdgePairCompareLess, MEMORY_FOR_PRIORITY_QUEUE, PRIORITY_QUEUE_MAX_SIZE/sizeof(pair<uint,EdgePair>)>::result PriorityQueueEdgePair;
     stxxl::read_write_pool<PriorityQueueEdgePair::block_type> PQEdgePair_Pool((mem_for_pools / 2) / PriorityQueueEdgePair::block_type::raw_size, (mem_for_pools / 2) / PriorityQueueEdgePair::block_type::raw_size);
     /*** Queue ***/
-    typedef stxxl::queue<VertexCost> em_queue;//memory cost: about 25MB per queue, 8MB each
+//    typedef stxxl::queue<VertexCost> em_queue;//memory cost: about 4MB per queue
+    typedef stxxl::queue<VertexCost,QMemory> em_queue;//memory cost: about 0.5MB per queue
     //Function for configuring the disk parameters
     void DiskConfigure() {
         // get uninitialized config singleton

@@ -114,6 +114,7 @@ namespace gbxxl{
         unsigned int size(){
             return ls_.size();
         }
+        //function of erasing certain key
         bool erase(int key){
             if (hash_.find(key) == hash_.end())//if not found
                 return false;
@@ -123,16 +124,29 @@ namespace gbxxl{
                 return true;
             }
         }
+        //function of popping the least important element
+        int pop(){
+            int pop_id = -1;
+            if (!ls_.empty()) {//if not empty
+                pop_id = ls_.back().first;
+                hash_.erase(ls_.back().first);
+                ls_.pop_back();
+            }
+            return pop_id;
+        }
         void set_capacity(unsigned int capacity) {
             capacity_ = capacity;
         }
+        //function of putting key to the back, i.e., the first to be evicted
         int push_back(int key){
+            if(capacity_ == 0)
+                return -1;
             if (hash_.find(key) == hash_.end())//if not found
                 return -1;
             else {//if found
                 int value = hash_[key]->second;
                 ls_.erase(hash_[key]);//erase the old element
-                ls_.push_back(make_pair(key, value));//re-add the same element to the front
+                ls_.emplace_back(key, value);//re-add the same element to the back
                 hash_[key] = std::prev(ls_.end());  //the iterator of the last element of ls_
                 return value;
             }
@@ -151,6 +165,8 @@ namespace gbxxl{
         }
         //function of updating info of elements
         int put(int key, int value) {
+            if(capacity_ == 0)
+                return -1;
             int temp_value=0,pop_id=-1;
             if (hash_.find(key) != hash_.end()){//if found, erase the element in list
                 temp_value = hash_[key]->second;
@@ -320,6 +336,7 @@ namespace gbxxl{
     struct HotPool {
         unsigned int capacityEdges = HotPool_EdgeSZ;//Capacity of how many edges can be stored in Edges_IM
         unordered_multimap<NodeId,EdgePairW> Edges_IM;  //in-memory multimap for EM_Dijk, memory cost: memSize/(2*WeightPowMax)
+//        unordered_map<NodeId,vector<EdgePairW>> Edges_IM;  //in-memory multimap for EM_Dijk, memory cost: memSize/(2*WeightPowMax)
         vector<pair<NodeId,NodeId>> EM_Map;//the map from cluster id to index id of the first edge and the last edge of this cluster in external vector
         VectorEdges_EMDijk Edges_EM;//memory cost: 32 MB
 
@@ -334,7 +351,24 @@ namespace gbxxl{
             Edges_IM.clear();
         }
     };
-    //hot pool struct for EM_Dijk
+    /*struct HotPool {
+        unsigned int capacityEdges = HotPool_EdgeSZ;//Capacity of how many edges can be stored in Edges_IM
+        unordered_multimap<NodeId,EdgePairW> Edges_IM;  //in-memory multimap for EM_Dijk, memory cost: memSize/(2*WeightPowMax)
+        vector<pair<NodeId,NodeId>> EM_Map;//the map from cluster id to index id of the first edge and the last edge of this cluster in external vector
+        VectorEdges_EMDijk Edges_EM;//memory cost: 32 MB
+
+        HotPool(){};
+        ~HotPool(){clear();};
+        void set_capacity(unsigned int a){
+            capacityEdges = a;
+        }
+        void clear(){
+            Edges_EM.clear();
+            EM_Map.clear();
+            Edges_IM.clear();
+        }
+    };*/
+    //hot pool struct for MUL-Dijk: vector
     struct HotPool2 {
         uint capacityClusters = Partition_N;//Capacity of how many partitions can be store in memory, if one partition size is 1MBB, then 128 partitions equal 128MB
         LRUCache LRU_IMCluster;//LRU manager for clusters
@@ -357,12 +391,64 @@ namespace gbxxl{
             HotPools.clear();
             FlagIM.clear();
         }
+    };
+    //hot pool struct for MUL-Dijk: unordered_multimap
+    struct HotPool3 {
+        uint capacityClusters = Partition_N;//Capacity of how many partitions can be store in memory, if one partition size is 1MBB, then 128 partitions equal 128MB
+        LRUCache LRU_IMCluster;//LRU manager for clusters
+        vector<unordered_multimap<NodeId,Edge>> HotPools;  //storing the info of partitions in memory or temp file. <partition_id,<adjacency lists>>
+        vector<bool> FlagIM;    //the flag of whether the partition is in memory
 
+        HotPool3(){};
+        HotPool3(uint pn,uint capacity){
+            HotPools.assign(pn,unordered_multimap<NodeId,Edge>());
+            FlagIM.assign(pn, false);
+            set_capacity(capacity);
+        };
+        ~HotPool3(){clear();};
+        void set_capacity(uint cluster_n){//,uint edgesPerCluster_n
+            capacityClusters = cluster_n;
+            LRU_IMCluster.set_capacity(capacityClusters);
+        }
+        void clear(){
+            LRU_IMCluster.clear();
+            HotPools.clear();
+            FlagIM.clear();
+        }
+    };
+    //hot pool struct for MUL-Dijk: unordered_multimap + stxxl vector
+    template <class T>
+    struct HotPool4{
+        uint capacityClusters = 0;//Capacity of how many partitions can be store in memory, if one partition size is 1MBB, then 128 partitions equal 128MB
+        LRUCache LRU_IMCluster;//LRU manager for clusters
+//        vector<unordered_multimap<NodeId,MCEdgeT>> HotPools;  //storing the info of partitions in memory or temp file. <partition_id,<adjacency lists>> Edge
+        vector<unordered_map<NodeId,vector<MCEdgeT>>> HotPools;  //storing the info of partitions in memory or temp file. <partition_id,<adjacency lists>> Edge
+        vector<char> clusterStatus;    //the flag of where the partition is, D: in disk; I: in memory; S: in stxxl vector;
+        T MCEdges_EM;//memory cost: 32 MB VectorMCEdgesEMTuple4
+
+        HotPool4(){};
+        HotPool4(uint pn,uint capacity){
+//            HotPools.assign(pn,unordered_multimap<NodeId,MCEdgeT>());//Edge
+            HotPools.assign(pn,unordered_map<NodeId,vector<MCEdgeT>>());//Edge
+            clusterStatus.assign(pn, 'D');
+            set_capacity(capacity);
+            capacityClusters=capacity;
+        };
+        ~HotPool4(){clear();};
+        void set_capacity(uint cluster_n){//,uint edgesPerCluster_n
+            capacityClusters = cluster_n;
+            LRU_IMCluster.set_capacity(capacityClusters);
+        }
+        void clear(){
+            LRU_IMCluster.clear();
+            HotPools.clear();
+            clusterStatus.clear();
+        }
     };
     //hot pool struct for proposed methods
     template <class T>
     struct MCHotPool{
-        uint capacityClusters = Partition_N;//Capacity of how many partitions can be store in memory, if one partition size is 1MBB, then 128 partitions equal 128MB
+        uint capacityClusters = 0;//Capacity of how many partitions can be store in memory, if one partition size is 1MBB, then 128 partitions equal 128MB Partition_N
         LRUCache LRU_IMCluster;//LRU manager for clusters
         vector<tuple<char,int,int>> clusterStatus;    //recording the status of clusters, <storage type, original size, current size>, for the first element: D: in disk; I: in memory; S: in stxxl vector;
         vector<vector<MCEdgeT>> HotPools;  //storing the info of partitions in memory or temp file. <partition_id,<adjacency lists>>
@@ -370,7 +456,8 @@ namespace gbxxl{
 //        VectorMCEdgesEMTuple_IO MCEdges_EM;    //the external vector, 32MB
 //        set<int> im_partitions; //set for recording the partitions in memory, just for observation
 
-        MCHotPool(){
+        MCHotPool(uint capacity){
+            capacityClusters = capacity;
             LRU_IMCluster.set_capacity(capacityClusters);
         }
         void init(uint p_number){
@@ -390,6 +477,30 @@ namespace gbxxl{
         }
         ~MCHotPool(){}
     };
+    //hot pool struct for OneHopNoIO
+    struct MCHotPool2 {
+        uint capacityClusters = Partition_N;//Capacity of how many partitions can be store in memory, if one partition size is 1MBB, then 128 partitions equal 128MB
+        LRUCache LRU_IMCluster;//LRU manager for clusters
+        vector<vector<MCEdgeCSR>> HotPools;  //storing the info of partitions in memory or temp file. <partition_id,<adjacency lists>>
+        vector<bool> FlagIM;    //the flag of whether the partition is in memory
+
+        MCHotPool2(){};
+        MCHotPool2(uint pn,uint capacity){
+            HotPools.assign(pn,vector<MCEdgeCSR>());
+            FlagIM.assign(pn, false);
+            set_capacity(capacity);
+        };
+        ~MCHotPool2(){clear();};
+        void set_capacity(uint cluster_n){//,uint edgesPerCluster_n
+            capacityClusters = cluster_n;
+            LRU_IMCluster.set_capacity(capacityClusters);
+        }
+        void clear(){
+            LRU_IMCluster.clear();
+            HotPools.clear();
+            FlagIM.clear();
+        }
+    };
     /// Class of external multi-criteria graph
     class EMMCGraph{
     public:
@@ -398,6 +509,7 @@ namespace gbxxl{
         uint memGraph = 512;    //memory size for graph data, unit(MB)
         uint node_num = 0;      //the number of vertices
         uint edge_num = 0;      //the number of edges
+        uint num_criteria = 0;   //the number of criteria
         usint sc_i = 0;         //the index of criterion in processing for multi-pass algorithms
         string dataset;         //dataset name
         vector<string> mc_criteria; //the criteria(type) of graph
@@ -421,7 +533,7 @@ namespace gbxxl{
         vector<bool> mc_finished;   //whether this criterion finished
 
         /// variables for algorithms
-        unordered_set<int> set_cri; //set to record whether the SP has been found in the criteria
+        set<int> set_cri; //set to record whether the SP has been found in the criteria
         // Variables for EM_Dijk
         vector<usint> num_pool;
         vector<vector<bitset1<WeightPowMax+1,EdgeWeight>>> node_to_category;//vector for recording the edge category for vertices, the first bit is for done bit. In order to avoid repeat graph reading, we use vector to store node_to_category information for all criteria, which may increase the memory consumption by (num_of_cri-1)*|V|.
@@ -431,46 +543,32 @@ namespace gbxxl{
         vector<tuple<bool,bool,int,int>> EMEdgesIndex_Bi;   //the state and index for BiMultiHops algorithm
         // Variables for One-Pass algorithms
         vector<PriorityQueue*> EM_MC_PQueue;
-        vector<PriorityQueue*> EM_MC_PQueue_r;
+        vector<PriorityQueue2*> EM_MC_PQueue_r;
         vector<int8_t> vertex_cri; //record the number that one criterion is processed
         vector<pair<int8_t,int8_t>> vertex_cri_Bi;
 
         /// variables for partition-based IO management
         uint partition_number = 0;       //the number of partitions
+
         vector<int> partitions_info;    //vector for storing the info of partitions, start vertex id
         vector<usint> node_to_cluster;//used to store the partition id of node
         vector<int> cluster_to_IO;  //map of recording visited partitions and corresponding #IO
         vector<bool> partitions_read;   //flag of whether a partition has been read
         int partition_left = 0;
+        double alpha = 0.9;//1;//   // threshold of One-Hop algorithm
+        double alpha_multi = 0.9;//1;// // threshold of Multi-Hop algorithm
+        double alpha_bi = 0.6;//0.9;//  // threshold of BiMulti-Hops algorithm
+
 
         /// Common Functions
+//        void MCReadGraph_MCEdges(string filename);  //one-off edges reading for MC-graph
         void ClusterInfoLoad(bool ifMap);     //function for reading partition information
         void CommonInitiation_IO();     //Initiation function for each round of IO-efficient algorithms
 
-        void MC_Evaluate_IO(const string& qtype, int algo_choice);  //Entry for io-efficient algorithm
-        void MC_Evaluate_EXP1(const string& qtype);    //Experiment 1
-        void MC_Evaluate_EXP2(const string& qtype);    //Experiment 2
-        void MC_Evaluate_EXP3(const string& qtype);    //Experiment 3
-        void MC_Evaluate_EXP456(const string& qtype);  //Experiment 4,5,6
+        void MC_Evaluate_IO(const string& qtype);  //Entry for io-efficient algorithm
 
-        /*** For Multi-Pass algorithm ***/
-        double MC_Multipass(const string& qtype, int algo_choice);//Function for MCSP by Dijkstra, return average query time
-        double MC_Multipass_one(const string& filename, int algo_choice);//Function for MCSP by Dijkstra
-
-        /// EM_Dijk
-        void EM_Preprocess();//Function for the preprocessing of EM_Dijk
-        void EM_Dijk_Initiation(vector<HotPool>& hotPools);  //function of initialising multi-pass algorithms in each round
-        Distance EM_Dijk(int node_start, int node_end); // the EM_Dijk algorithm
-        void EM_ReadCluster(int category_id,NodeId ID1,vector<EdgePairW>& resultVE, vector<HotPool>& hotPools);//function of reading partition from disk
-
-        /// MUL_Dijk
-        Distance Dijkstra_IO(int node_start, int node_end, VectorMCEdgesEMTuple_DijkIO& EMMCEdges); // the Multi-pass Dijkstra based on stxxl vector
-        template<class T>
-        void ReadClusterToExternalVectorMC(int target_p_id, T & EMMCEdges);//function of reading partition data to external vector
-        void GraphReadCluster(HotPool2 & mcHotPool,int target_p_id);//function of read partition for Dijkstra_IO
-
-        /// MUL_BiDijk
-        Distance BiDijkstra_IO(int node_start, int node_end, VectorMCEdgesEMTuple_BiDijkIO& EMMCEdges); // the Multi-pass Dijkstra based on stxxl vector
+        template <class T>
+        void GraphReadCluster4(HotPool4<T> & mcHotPool,int target_p_id);//function of read partition for HotPool4
 
         /*** For One-Pass algorithms ***/
         double MC_OnePass(const string& qtype,int algo_choice);//Entry for one-pass algorithms
@@ -479,13 +577,13 @@ namespace gbxxl{
         void OnePassClear_IO(int algo_choice);
 
         /// One-hop without io optimization
-        void EM_MC_OneHop_NoIO(int node_start, int node_end);   //One-hop algorithm without io optimization
+        void EM_MC_OneHop_NoIO_new(int node_start, int node_end);   //One-hop algorithm without io optimization
 
         /// Multi-hops without io optimization
-        void EM_MC_MultiHop_NoIO(int node_start, int node_end);//Function for multi-hops algorithm with io optimization
+        void EM_MC_MultiHop_NoIO_new(int node_start, int node_end);//Function for multi-hops algorithm with io optimization
 
         /// BiMulti-hops without io optimization
-        void EM_MC_BiMultiHop_NoIO(int node_start, int node_end);
+        void EM_MC_BiMultiHop_NoIO_new(int node_start, int node_end);
 
         /// One-hop with io optimization
         void EM_MC_OneHop(int node_start, int node_end);//One-hop algorithm with io optimization
@@ -496,17 +594,21 @@ namespace gbxxl{
 
         /// BiMulti-hops with io optimization
         void EM_MC_BiMultiHop(int node_start, int node_end);
-        void GraphMCReadCluster_New_Bi(MCHotPool<VectorMCEdgesEMTuple_IO_Bi> & mcHotPool,NodeId& ID1,int target_p_id,vector<int8_t>& cluster_to_bi,int8_t direction,vector<bool>& clusterRead);//function of reading partition for one-pass algorithms with io optimization
+        void GraphMCReadCluster_New_Bi(MCHotPool<VectorMCEdgesEMTuple_IO_Bi> & mcHotPool,int target_p_id,vector<int8_t>& cluster_to_bi,int8_t direction,vector<bool>& clusterRead);//function of reading partition for one-pass algorithms with io optimization NodeId& ID1,
+//        void GraphMCReadCluster_New_Bi(MCHotPool & mcHotPool,NodeId& ID1,int target_p_id,vector<int8_t>& cluster_to_bi, bool flag_reverse);//function of reading partition for one-pass algorithms with io optimization
 
         static int Weight_to_category(int w);
         void EM_IORecord(Stats& a);
         int Minimal_IO();
         bool EM_JudgeEmpty(vector<PriorityQueue*> &em_mc_pqueue);
-        bool EM_JudgeEmptyBi(vector<PriorityQueue*> &em_mc_pqueue, vector<PriorityQueue*> &em_mc_pqueue_r);
+        bool EM_JudgeEmptyBi(vector<PriorityQueue*> &em_mc_pqueue, vector<PriorityQueue2*> &em_mc_pqueue_r);
         void InfoPrint() const;//function of printing basic information
         void MemoryCheck(int algo_choice, uint mem, bool &flag_exit);
+
+        list<int> Dij_getPath(vector<NodeId> & pre, NodeId ID1,NodeId ID2);
+        list<int> BiDij_getPath(vector<NodeId> & pre,vector<NodeId> & pre_b,NodeId ID1,NodeId ID2,NodeId terminate_id);
     };
 
 }
 
-#endif
+#endif //MCSPS_EMGRAPH_H

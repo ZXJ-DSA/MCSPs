@@ -27,6 +27,7 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include "Timer.h"
+#include "memory_info.h"
 
 using namespace std;
 
@@ -38,16 +39,19 @@ typedef unsigned short int RangeId;
 //typedef unsigned int uint;
 typedef unsigned int Distance;//long long
 typedef tuple<int,int,int,int,int> MCWeight;
-
-#define OneHop 1
-#define MultiHops 2
-#define BiMultiHops 3
+typedef tuple<int,int,int> MCWeight3;
+#define DIJKSTRA 1
+#define BI_DIJKSTRA 2
+#define DIJKSTRACH 3
+#define EMDijk 1
+#define DijkstraIO 2
+#define BiDijkstraIO 3
 #define OneHopNoIO 4
 #define MultiHopsNoIO 5
 #define BiMultiHopsNoIO 6
-#define EMDijk 7
-#define DijkstraIO 8
-#define BiDijkstraIO 9
+#define OneHop 7
+#define MultiHops 8
+#define BiMultiHops 9
 #define FORWARD 1
 #define REVERSE 2
 #define LONG_DIS 1
@@ -61,69 +65,81 @@ typedef tuple<int,int,int,int,int> MCWeight;
 #define EXP5 5
 #define EXP6 6
 #define EXP7 7
+#define EXP8 8
 #define INF INT32_MAX
 #define Edge_SZ 16 //the memory size of EdgePairW, 3+1 int (16 bytes)
 #define MCEdge_SZ 28 //the memory size of MCEdgeT, 7 int (28 bytes)
-#define NUM_OF_CRITERIA 5 //the maximal number of criteria in the graph data
-
+#define INF100 100000000 //one hundred million
 
 /*** Parameters for specifying ***/
-const char* disk_conf = "disk=/Users/zhouxj/stxxl.tmp, 20 GiB, syscall unlink"; //disk configuration for stxxl
-//For Windows: "disk=e:\stxxl.tmp, 20 GiB, wincall delete";
-char* DataPath =  "/Users/zhouxj/Documents/1-Research/Datasets/"; //the data path of datasets
-//For Windows: "E:/Datasets/";
+//const char* disk_conf = "disk=/Users/zhouxj/stxxl.tmp, 20 GiB, syscall unlink";
+const char* disk_conf = "disk=/media/TraminerData/Xinjie/stxxl.tmp, 100 GiB, syscall unlink";//disk configuration for stxxl  "disk=e:\stxxl.tmp, 10 GiB, wincall delete"
+//char* DataPath = "/Users/zhouxj/Documents/1-Research/Datasets/";//
+char* DataPath = "/media/TraminerData/Xinjie/Datasets/";//  //the data path of datasets  "E:/Datasets/"
 
 ///Basic information
+int NUM_OF_CRITERIA = 5; //the maximal number of criteria in the graph data
 int num_of_cri = 3;         //the number of criteria to be processed
-int run_times = 10;        //50, 30, 20
-string query_type = "R";  // S M L R
+int run_times = 100;        //50, 30, 20
+string query_type = "all";  // S M L all R
+string partition_type = "ave";
 bool ifOptimal = false;     // flag of computing the optimal IO
 bool ifMu = false;          //if test the parameter of Mu
 uint PartitionNumber = 2048;    //default 2048, th number of partitions
-uint PartitionSize = 256;//4096   //default 1024 KB, the memory size of one partition, unit(KB) 1024
+uint PartitionSize = 256;//1024;//15360;//4096;//   //default 1024 KB, the memory size of one partition, unit(KB) 1024
 const uint Block_SZ = 262144;   //default 262144 bytes(256KB), the memory size of io buffer block, unit(byte)
-const uint WeightPowMax = 20;   //default 20, the power of maximal edge weight, 2^20=1,048,576(1.05 million)
-const uint MinMemThreshold = 128; //default 256 MB, the minimal threshold of memory size for graph data
-const uint MuForEM = 3;  //default 0.3, the memory portion for external vector
-const uint MuForEM_Bi = 3;  //default 0.3, the memory portion for external vector
-double alpha = 0.6;     // threshold of One-Hop algorithm
-double alpha_multi = 0.6;  // threshold of Multi-Hop algorithm
-double alpha_bi = 1;  // threshold of BiMulti-Hops algorithm
-bool ifFile = true;
-
+const uint WeightPowMax = 20;//20;   //default 20, the power of maximal edge weight, 2^20=1,048,576(1.05 million)
+const uint MinMemThreshold = 32;//128; //default 128 MB, the minimal threshold of memory size for graph data
+const uint MuForEM = 4;//9;//  //default 0.4, the memory portion for external vector
+const uint MuForEM_Bi = 3;//1;//  //default 0.3, the memory portion for external vector
+bool ifFile = false;    //default false, whether to store the output content to file
+bool ifshow = true;
 
 ///Graph data memory
-const uint MemGraph_EMDijk = 1326;//15013;//9837;//4893;//   2178;  //the memory size for graph data(i.e. adjacency lists), unit(MB)
-const uint MemGraph_DijkIO = 1349;//15095;//9892;// 5036;//  2960;  // the memory size for graph data(i.e. adjacency lists), unit(MB)
-const uint MemGraph_BiDijkIO = 1235; //15030;//9804;//5021; //     // the memory size for graph data(i.e. adjacency lists), unit(MB)
-const uint MemGraph_NoIO = 1103;//14927;//9687;//  4948;// 2817;  // the memory size for graph data(i.e. adjacency lists), unit(MB)
-const uint MemGraph_NoIO_Bi = 664;//14637;//9327;//4808;//  2594;//MinMemThreshold;  //the memory size for graph data(i.e. adjacency lists), unit(MB)
-const uint MemGraph_IO = 1080; //14915;//9669;// 4945; //     // the memory size for graph data(i.e. adjacency lists), unit(MB)
-const uint MemGraph_IO_Bi = 641; //14624;//9309;// 4805; //    //the memory size for graph data(i.e. adjacency lists), unit(MB)
+const uint MemGraph_EMDijk = 1446;  //the memory size for graph data(i.e. adjacency lists), unit(MB)
+const uint MemGraph_DijkIO = 1349;  // the memory size for graph data(i.e. adjacency lists), unit(MB)
+const uint MemGraph_BiDijkIO = 1235;  // the memory size for graph data(i.e. adjacency lists), unit(MB)
+const uint MemGraph_NoIO = 1103;//4948;//  // the memory size for graph data of OHP-LRU and MHP-LRU (i.e. adjacency lists), unit(MB)
+const uint MemGraph_NoIO_Bi = 664;//4808;//  //the memory size for graph data of BMHP-LRU (i.e. adjacency lists), unit(MB)
+const uint MemGraph_IO = 1080;//4945;//   // the memory size for graph data of OHP and MHP (i.e. adjacency lists), unit(MB)
+const uint MemGraph_IO_Bi = 641;//4805;//   //the memory size for graph data of BMHP (i.e. adjacency lists), unit(MB)
+
 
 ///for EM_Dijk
-unsigned long long HotPool_EdgeSZ = 0.9*MemGraph_EMDijk*1024*1024/(Edge_SZ*WeightPowMax);  //default 139810, the number of Edges in each in-memory hot pool, overall memory cost: BASIC_SZ
+unsigned long long HotPool_EdgeSZ = 0.9*MemGraph_EMDijk*1024*1024/(Edge_SZ*WeightPowMax);//0.9*MemGraph_EMDijk*1024*1024/(Edge_SZ*WeightPowMax);  //default 139810, the number of Edges in each in-memory hot pool, overall memory cost: BASIC_SZ
 ///for algorithms with io optimization
 const uint BlockPerPage = 1; //default 4, the memory size of one page in external vector, 4*256KB=1MB
-const uint PageNumberEMDijk = (MemGraph_EMDijk / (10 * WeightPowMax)) * 4;//the number of pages in memory
-const uint PageNumberIO = (MemGraph_IO * MuForEM /10)*4;//32*4; //default 32, the number of pages in memory, overall memory cost for one vector is 32*1=32MB
-const uint PageNumberIO_Bi = (MemGraph_IO * MuForEM_Bi / 10)*4;//32*4; //default 32, the number of pages in memory, overall memory cost for one vector is 32*1=32MB
-uint Partition_N = 0.85*(MemGraph_IO-PageNumberIO/4)*1024/PartitionSize;// the number of partitions in memory/
-uint Partition_N_Bi = 0.85*(MemGraph_IO_Bi-PageNumberIO_Bi/4)*1024/PartitionSize;// the number of partitions in memory, memory cost: BASIC_SZ
+const uint PageNumberEMDijk = (0.1 * MemGraph_EMDijk / WeightPowMax) * 4;//(0.1 * MemGraph_EMDijk / WeightPowMax) * 4;//the number of pages in memory, 10% of memory is used for stxxl vector
+const uint PageNumber4_Dijk = MemGraph_NoIO/4*4;//64*4;//100*4;// //default 32MB, the number of pages in memory, overall memory cost for one vector is 32*1=32MB
+const uint PageNumber4_BiDijk = 0.1*MemGraph_NoIO_Bi*4;// //default 32MB, the number of pages in memory, overall memory cost for one vector is 32*1=32MB
+const uint PageNumber4_NoIO = MemGraph_NoIO/2*4;//64*4;//100*4;// //default 32MB, the number of pages in memory, overall memory cost for one vector is 32*1=32MB
+const uint PageNumber4_NoIO_Bi = MemGraph_NoIO/4*4;//32*4;//MemGraph_NoIO_Bi/2*4;//64*4;//100*4;// //default 32MB, the number of pages in memory, overall memory cost for one vector is 32*1=32MB
+const uint PageNumberIO = MemGraph_IO * MuForEM *4 /10;//32*4; //default 32, the number of pages in memory, overall memory cost for one vector is 32*1=32MB 0.85*
+const uint PageNumberIO_Bi = MemGraph_IO_Bi * MuForEM_Bi *4 /10;//32*4; //default 32, the number of pages in memory, overall memory cost for one vector is 32*1=32MB
+uint Partition_N = 1+0.75*(10-MuForEM)*MemGraph_IO*1024/(10*PartitionSize);// the number of partitions in memory/
+uint Partition_N_Bi = 2+0.75*(10-MuForEM_Bi)*MemGraph_IO_Bi*1024/(10*PartitionSize);// the number of partitions in memory, memory cost: BASIC_SZ
 
 ///for algorithms without io optimization
-//const uint PageNumber_DijkIO = MemGraph_DijkIO*1024/PartitionSize;//the number of pages in stxxl vector for algorithms without io optimization, memory cost: BASIC_SZ
-const uint PageNumber_DijkIO = (MemGraph_DijkIO*1024)/(BlockPerPage*Block_SZ/1024);//the number of pages in stxxl vector for algorithms without io optimization, memory cost: BASIC_SZ MemGraph_DijkIO
-const uint PageNumber_BiDijkIO = (MemGraph_BiDijkIO*1024)/(BlockPerPage*Block_SZ/1024);//the number of pages in stxxl vector for algorithms without io optimization, memory cost: BASIC_SZ MemGraph_DijkIO
+const uint PartitionNumber_DijkIO_new = 1+0.75*(MemGraph_DijkIO-PageNumber4_Dijk/4)*1024/PartitionSize;//the number of pages in stxxl vector for algorithms without io optimization, memory cost: BASIC_SZ
+const uint PartitionNumber_BiDijkIO_new = 2+0.75*(MemGraph_BiDijkIO-PageNumber4_BiDijk/4)*1024/PartitionSize;//the number of pages in stxxl vector for algorithms without io optimization, memory cost: BASIC_SZ MemGraph_DijkIO
+const uint PartitionNumber_NoIO = 1+0.75*(MemGraph_NoIO-PageNumber4_NoIO/4)*1024/PartitionSize;//the number of pages in stxxl vector for algorithms without io optimization, memory cost: BASIC_SZ
+const uint PartitionNumber_NoIO_Bi = 2+0.75*(MemGraph_NoIO_Bi-PageNumber4_NoIO/4)*1024/PartitionSize;//the number of pages in stxxl vector for algorithms without io optimization, memory cost: BASIC_SZ 0.75*
+const uint PageNumber_DijkIO = MemGraph_DijkIO*1024/(BlockPerPage*Block_SZ/1024);//the number of pages in stxxl vector for algorithms without io optimization, memory cost: BASIC_SZ MemGraph_DijkIO
+const uint PageNumber_BiDijkIO = MemGraph_BiDijkIO*1024/(BlockPerPage*Block_SZ/1024);//the number of pages in stxxl vector for algorithms without io optimization, memory cost: BASIC_SZ MemGraph_DijkIO
 const uint PageNumber_NoIO = MemGraph_NoIO*1024/(BlockPerPage*Block_SZ/1024);//the number of pages in stxxl vector for algorithms without io optimization, memory cost: BASIC_SZ
 const uint PageNumber_NoIO_Bi = MemGraph_NoIO_Bi*1024/(BlockPerPage*Block_SZ/1024);//the number of pages in stxxl vector for algorithms without io optimization, memory cost: BASIC_SZ
 
+
 ///External priority queue (overall memory cost for one priority queue is about 50MB in practice)
-const uint MEMORY_FOR_PRIORITY_QUEUE = 32*1024*1024;//default 32 MB, internal memory for priority queue
-const uint PRIORITY_QUEUE_MAX_SIZE = 32*1024*1024; //default 32*1024*1024(33,334,432), maximal number of items in memory, the actual number can be somewhat larger
-const uint mem_for_pools = 16*1024*1024;    //default 16 MB, internal memory for prefetching
+const uint QMemory = 8*Block_SZ;//8*Block_SZ;// default 8*Block_SZ, which consume 4MB for each queue
+const uint PQMemory = 32;//8;//32;// //default 32 MB
+//const uint PQMemory = 8;//8;//32;// //default 32 MB
+const uint MEMORY_FOR_PRIORITY_QUEUE = PQMemory*1024*1024;//default 32 MB, internal memory for priority queue
+const uint PRIORITY_QUEUE_MAX_SIZE = MEMORY_FOR_PRIORITY_QUEUE/256;//1024; //default MEMORY_FOR_PRIORITY_QUEUE/1024, amounts to 33554432 maximal number of items in stxxl priority queue, the actual number can be somewhat larger
+const uint PRIORITY_QUEUE_MAX_SIZE_BI = MEMORY_FOR_PRIORITY_QUEUE/256; //default MEMORY_FOR_PRIORITY_QUEUE/256, amounts to 134,217,728 maximal number of items in stxxl priority queue, the actual number can be somewhat larger
+const uint mem_for_pools = MEMORY_FOR_PRIORITY_QUEUE/4;    //default 8 MB, internal memory for prefetching
 ///External sorter
-const uint MEMORY_FOR_SORTER = 256*1024*1024; //default 256 MB, internal memory for sorter
+const uint MEMORY_FOR_SORTER = 1024*1024*1024; //default 1024 MB, internal memory for sorter
 
 ///Intermediate parameters
 const uint Partition_MCEdgeSZ = PartitionSize*1024/MCEdge_SZ;//default 9362, the number of MCEdges that one partition can hold at most, 9362*28bytes=256KB
@@ -156,12 +172,51 @@ struct MCEdge {
     MCEdge(NodeId u_, std::vector<EdgeWeight> w_=std::vector<EdgeWeight>()) :u(u_), w(w_) {}//initiation function
     MCEdge() {}//u = -1; w.resize(num_of_cri);
     ~MCEdge() {w.clear();}
+    void clear(){
+        w.clear();
+    }
 };
 //Data structure for edges in MC-graph
+//struct MCEdgeT {
+//    NodeId ID1 = 0;     //the ID of source node
+//    NodeId ID2 = 0;     //the ID of target node
+//    MCWeight3 w;         //the weights of edge
+//
+//    MCEdgeT() {}
+//    MCEdgeT(NodeId ID1_, NodeId ID2_, int w0,int w1,int w2):ID1(ID1_),ID2(ID2_) {//,int w3, int w4
+//        get<0>(w) = w0; get<1>(w) = w1; get<2>(w) = w2;
+////        get<3>(w) = w3; get<4>(w) = w4;
+//    }
+//    MCEdgeT(NodeId ID1_, NodeId ID2_, MCWeight3 w_) :ID1(ID1_),ID2(ID2_), w(w_) {}//initiation function
+//    ~MCEdgeT() {}
+//
+//    int getW(int index) const {
+//        assert(index<=2 && index >=0);
+//        switch (index) {
+//            case 0: return get<0>(w);
+//            case 1: return get<1>(w);
+//            case 2: return get<2>(w);
+////            case 3: return get<3>(w);
+////            case 4: return get<4>(w);
+//            default: return -1;
+//        }
+//    }
+//    void putW(int index, int newW){
+//        assert(index<=2 && index >=0);
+//        switch (index) {
+//            case 0: get<0>(w) = newW; break;
+//            case 1: get<1>(w) = newW; break;
+//            case 2: get<2>(w) = newW; break;
+////            case 3: get<3>(w) = newW; break;
+////            case 4: get<4>(w) = newW; break;
+//            default: break;
+//        }
+//    }
+//};
 struct MCEdgeT {
     NodeId ID1 = 0;     //the ID of source node
     NodeId ID2 = 0;     //the ID of target node
-    MCWeight w;  //the weight of edge
+    MCWeight w;         //the weights of edge
 
     MCEdgeT() {}
     MCEdgeT(NodeId ID1_, NodeId ID2_, int w0,int w1,int w2,int w3, int w4):ID1(ID1_),ID2(ID2_) {
@@ -170,7 +225,8 @@ struct MCEdgeT {
     }
     MCEdgeT(NodeId ID1_, NodeId ID2_, MCWeight w_) :ID1(ID1_),ID2(ID2_), w(w_) {}//initiation function
     ~MCEdgeT() {}
-    int getW(int index){
+
+    int getW(int index) const {
         assert(index<=4 && index >=0);
         switch (index) {
             case 0: return get<0>(w);
@@ -193,6 +249,77 @@ struct MCEdgeT {
         }
     }
 };
+//Data structure for edges in MC-graph
+struct MCEdgeCSR {
+    NodeId ID2 = 0;     //the ID of target node
+    MCWeight3 w;         //the weights of edge
+
+    MCEdgeCSR() {}
+    MCEdgeCSR(NodeId ID2_, int w0,int w1,int w2,int w3, int w4):ID2(ID2_) {
+        get<0>(w) = w0; get<1>(w) = w1; get<2>(w) = w2;
+//        get<3>(w) = w3; get<4>(w) = w4;
+    }
+    MCEdgeCSR(NodeId ID2_, MCWeight3 w_) :ID2(ID2_), w(w_) {}//initiation function
+    ~MCEdgeCSR() {}
+
+    int getW(int index) const {
+        assert(index<=4 && index >=0);
+        switch (index) {
+            case 0: return get<0>(w);
+            case 1: return get<1>(w);
+            case 2: return get<2>(w);
+//            case 3: return get<3>(w);
+//            case 4: return get<4>(w);
+            default: return -1;
+        }
+    }
+    void putW(int index, int newW){
+        assert(index<=4 && index >=0);
+        switch (index) {
+            case 0: get<0>(w) = newW; break;
+            case 1: get<1>(w) = newW; break;
+            case 2: get<2>(w) = newW; break;
+//            case 3: get<3>(w) = newW; break;
+//            case 4: get<4>(w) = newW; break;
+            default: break;
+        }
+    }
+};
+/*struct MCEdgeCSR {
+    NodeId ID2 = 0;     //the ID of target node
+    MCWeight w;         //the weights of edge
+
+    MCEdgeCSR() {}
+    MCEdgeCSR(NodeId ID2_, int w0,int w1,int w2,int w3, int w4):ID2(ID2_) {
+        get<0>(w) = w0; get<1>(w) = w1; get<2>(w) = w2;
+        get<3>(w) = w3; get<4>(w) = w4;
+    }
+    MCEdgeCSR(NodeId ID2_, MCWeight w_) :ID2(ID2_), w(w_) {}//initiation function
+    ~MCEdgeCSR() {}
+
+    int getW(int index) const {
+        assert(index<=4 && index >=0);
+        switch (index) {
+            case 0: return get<0>(w);
+            case 1: return get<1>(w);
+            case 2: return get<2>(w);
+            case 3: return get<3>(w);
+            case 4: return get<4>(w);
+            default: return -1;
+        }
+    }
+    void putW(int index, int newW){
+        assert(index<=4 && index >=0);
+        switch (index) {
+            case 0: get<0>(w) = newW; break;
+            case 1: get<1>(w) = newW; break;
+            case 2: get<2>(w) = newW; break;
+            case 3: get<3>(w) = newW; break;
+            case 4: get<4>(w) = newW; break;
+            default: break;
+        }
+    }
+};*/
 //Data structure for priority queue
 struct VertexCost{
     NodeId id = 0;
@@ -295,7 +422,8 @@ struct EdgePairWComparator {//the less, the better
 };
 struct PairComparator {
     bool operator () (const std::pair<NodeId,uint>& a, const std::pair<NodeId,uint>& b) const {//
-        return a.second<b.second;
+//        return a.second<b.second;
+        return (a.second < b.second) || (b.second >= a.second && (a.first < b.first));
     }
     std::pair<NodeId,uint> min_value() const {
         std::pair<NodeId,uint> a;
@@ -313,22 +441,44 @@ struct PairComparator {
 struct PQCompareLess
 {
     bool operator () (const VertexCost& a, const VertexCost& b) const
-    { return (a.cost > b.cost); }
+    {
+//        return (a.cost > b.cost);
+        return (a.cost > b.cost) || (b.cost <= a.cost && (a.id > b.id));
+    }
 
     VertexCost min_value() const
     { return VertexCost(0,std::numeric_limits<Distance>::max()); }
 };
+struct PQCompareLess2
+{
+    bool operator () (const std::pair<NodeId,Distance>& a, const std::pair<NodeId,Distance>& b) const
+    {
+//        return (a.second > b.second);
+        return (a.second > b.second) || (b.second <= a.second && (a.first > b.first));
+    }
+
+    std::pair<NodeId,Distance> min_value() const
+    { return make_pair(0,std::numeric_limits<Distance>::max()); }
+};
 struct PQEdgePairCompareLess
 {
     bool operator () (const pair<uint,EdgePair>& a, const pair<uint,EdgePair>& b) const
-    { return (a.first > b.first); }
+    {
+        return (a.first > b.first);
+//        return (a.first > b.first) || (b.first <= a.first && (a.second.ID2 > b.second.ID2));
+    }
 
     pair<uint,EdgePair> min_value() const
     {   pair<uint,EdgePair> a;
         a.first=std::numeric_limits<uint>::max();
-        a.second=EdgePair();
+        a.second=EdgePair(std::numeric_limits<NodeId>::max(),std::numeric_limits<NodeId>::max());
         return a; }
 };
+//function of returning the peak memory usage of the program
+void PeakMemory(){
+    size_t peakSize = getPeakRSS()/1048576; //memory size in MB
+    cout << "The maximum memory usage is: "<< peakSize << " MB." << endl;
+}
 
 //created by Mengxuan, modified by Xinjie
 namespace benchmark {
@@ -437,6 +587,7 @@ namespace benchmark {
                 node_t el_pos = position[element];//position information
                 element_t &el = elements[el_pos];//get the element
                 if (key > el.key) {//update the element
+//                if (key > el.key || (key <= el.key && element > el.element)) {//update the element || (elements[parent_i].key <= elements[cur_i].key && elements[parent_i].element > elements[cur_i].element)
                     el.key = key;
                     sift_down(el_pos);
                 } else {
@@ -488,6 +639,7 @@ namespace benchmark {
             while (cur_i > 0) {
                 node_t parent_i = (cur_i - 1) >> log_k;//equals (cur_i - 1)/(2^log_k)
                 if (elements[parent_i].key > elements[cur_i].key)//compare with parent node, if smaller, then swap
+//                if (elements[parent_i].key > elements[cur_i].key || (elements[parent_i].key <= elements[cur_i].key && elements[parent_i].element > elements[cur_i].element))//compare with parent node, if smaller, then swap
                     swap(cur_i, parent_i);
                 else
                     break;
@@ -508,6 +660,7 @@ namespace benchmark {
 
                 for (node_t j = child_ind_l; j < child_ind_u; ++j) {
                     if (elements[j].key < min_key) {
+//                    if (elements[j].key < min_key || (elements[j].key >= min_key && elements[j].element < elements[i].element)) {
                         min_ind = j;
                         min_key = elements[j].key;
                     }

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(MCSPs_master)
+project(MCSPs)
 
 set(CMAKE_CXX_STANDARD 14)
 
@@ -11,6 +11,10 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${STXXL_CXX_FLAGS}")
 # add STXXL includes path
 include_directories(${STXXL_INCLUDE_DIRS})
 
-add_executable(MCSPs_master main.cpp head.h emgraph.h Timer.h emgraph.hpp)
+add_definitions(-w) # omit warning information
 
-target_link_libraries(MCSPs_master ${STXXL_LIBRARIES})
+
+add_executable(MCSP_EM mcspem.cpp head.h emgraph.h Timer.h emgraph.hpp)
+
+
+target_link_libraries(MCSP_EM ${STXXL_LIBRARIES})
