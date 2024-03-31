@@ -37,10 +37,12 @@ namespace ioxxl{
     ///for algorithms without io optimization
     //for Dijkstra_IO
     typedef stxxl::VECTOR_GENERATOR<MCEdgeT,BlockPerPage,PageNumber4_Dijk,Block_SZ>::result VectorMCEdgesEMTuple4_DijkIO;// 32MB, MCEdgeT
-    typedef stxxl::VECTOR_GENERATOR<MCEdgeT,BlockPerPage,PageNumber_DijkIO,Block_SZ>::result VectorMCEdgesEMTuple_DijkIO;//MCEdgeT
+//    typedef stxxl::VECTOR_GENERATOR<MCEdgeT,BlockPerPage,PageNumber_DijkIO,Block_SZ>::result VectorMCEdgesEMTuple_DijkIO;//MCEdgeT
+    typedef stxxl::VECTOR_GENERATOR<MCEdgeT,BlockPerPage,PageNumber4_Dijknew,Partition_SZ>::result VectorMCEdgesEMTuple_DijkIO;// 32MB, MCEdgeT
     //for BiDijkstra_IO
     typedef stxxl::VECTOR_GENERATOR<MCEdgeT,BlockPerPage,PageNumber4_BiDijk,Block_SZ>::result VectorMCEdgesEMTuple4_BiDijkIO;// 32MB, MCEdgeT
-    typedef stxxl::VECTOR_GENERATOR<MCEdgeT,BlockPerPage,PageNumber_BiDijkIO,Block_SZ>::result VectorMCEdgesEMTuple_BiDijkIO;//MCEdgeT
+//    typedef stxxl::VECTOR_GENERATOR<MCEdgeT,BlockPerPage,PageNumber_BiDijkIO,Block_SZ>::result VectorMCEdgesEMTuple_BiDijkIO;//MCEdgeT
+    typedef stxxl::VECTOR_GENERATOR<MCEdgeT,BlockPerPage,PageNumber4_BiDijknew,Partition_SZ>::result VectorMCEdgesEMTuple_BiDijkIO;//MCEdgeT
     //for OneHop_NoIO and MultiHops_NoIO
     typedef stxxl::VECTOR_GENERATOR<MCEdgeT,BlockPerPage,PageNumber4_NoIO,Block_SZ>::result VectorMCEdgesEMTuple4_NoIO;// 32MB, MCEdgeT
     typedef stxxl::VECTOR_GENERATOR<MCEdgeT,BlockPerPage,PageNumber_NoIO,Block_SZ>::result VectorMCEdgesEMTuple_NoIO;//MCEdgeT
@@ -54,8 +56,8 @@ namespace ioxxl{
     stxxl::read_write_pool<PriorityQueue::block_type> PQ_Pool((mem_for_pools / 2) / PriorityQueue::block_type::raw_size, (mem_for_pools / 2) / PriorityQueue::block_type::raw_size);
     typedef stxxl::PRIORITY_QUEUE_GENERATOR<VertexCost, PQCompareLess, MEMORY_FOR_PRIORITY_QUEUE, PRIORITY_QUEUE_MAX_SIZE_BI>::result PriorityQueue2;
     stxxl::read_write_pool<PriorityQueue2::block_type> PQ_Pool2((mem_for_pools / 2) / PriorityQueue2::block_type::raw_size, (mem_for_pools / 2) / PriorityQueue2::block_type::raw_size);
-    typedef stxxl::PRIORITY_QUEUE_GENERATOR<pair<uint,EdgePair>, PQEdgePairCompareLess, MEMORY_FOR_PRIORITY_QUEUE, PRIORITY_QUEUE_MAX_SIZE/sizeof(pair<uint,EdgePair>)>::result PriorityQueueEdgePair;
-    stxxl::read_write_pool<PriorityQueueEdgePair::block_type> PQEdgePair_Pool((mem_for_pools / 2) / PriorityQueueEdgePair::block_type::raw_size, (mem_for_pools / 2) / PriorityQueueEdgePair::block_type::raw_size);
+    typedef stxxl::PRIORITY_QUEUE_GENERATOR<pair<uint,EdgePair>, PQEdgePairCompareLess, MEMORY_FOR_PRIORITY_QUEUE_Pre, PRIORITY_QUEUE_MAX_SIZE_Pre/sizeof(pair<uint,EdgePair>)>::result PriorityQueueEdgePair;
+    stxxl::read_write_pool<PriorityQueueEdgePair::block_type> PQEdgePair_Pool((mem_for_pools_pre / 2) / PriorityQueueEdgePair::block_type::raw_size, (mem_for_pools_pre / 2) / PriorityQueueEdgePair::block_type::raw_size);
     /*** Queue ***/
 //    typedef stxxl::queue<VertexCost> em_queue;//memory cost: about 4MB per queue
     typedef stxxl::queue<VertexCost,QMemory> em_queue;//memory cost: about 0.5MB per queue

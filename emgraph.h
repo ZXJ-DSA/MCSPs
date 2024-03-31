@@ -11,13 +11,19 @@
 #include <stxxl/vector>
 #include <stxxl/priority_queue>
 #include <stxxl/sorter>
-#include "Timer.h"
 #include "head.h"
 #include "ioxxl.h"
+#include <boost/algorithm/string/split.hpp>
+#include <boost/algorithm/string/classification.hpp>
+#include <boost/thread/thread.hpp>
 
 namespace gbxxl{
     using namespace std;
     using namespace ioxxl;
+
+//    const long int BLK_SZ = 4194304*8;  //1024*1024*4 bytes(i.e. 4MB) sizeof blk for I/O
+//    const int SZ_VERTEX = sizeof(int);
+//    const int VERTEX_PER_BLK = BLK_SZ/SZ_VERTEX;//number of int readable, 1024*1024*8
 
     template <size_t N, class T = unsigned long int>
     class bitset1;
@@ -505,10 +511,15 @@ namespace gbxxl{
     class EMMCGraph{
     public:
         /// basic variables
+        int algo=1; //1:OHP, 2:MHP, 3:SCP
+        bool ifBidirectional=false;  //whether to use bidirectional search
+        bool ifIOOptimization=true; //whether to use IO optimization
+        bool ifShortcut=true;   //whether to use shortcut optimization
         uint memSize = 2048;    //Overall memory size, unit(MB)
         uint memGraph = 512;    //memory size for graph data, unit(MB)
         uint node_num = 0;      //the number of vertices
-        uint edge_num = 0;      //the number of edges
+        unsigned long long edge_num = 0;      //the number of edges
+        int threadnum = 10;    //the thread number for paralleling
         uint num_criteria = 0;   //the number of criteria
         usint sc_i = 0;         //the index of criterion in processing for multi-pass algorithms
         string dataset;         //dataset name
@@ -544,21 +555,36 @@ namespace gbxxl{
         // Variables for One-Pass algorithms
         vector<PriorityQueue*> EM_MC_PQueue;
         vector<PriorityQueue2*> EM_MC_PQueue_r;
-        vector<int8_t> vertex_cri; //record the number that one criterion is processed
+        vector<int8_t> vertex_cri; //record the number of processed criteria
         vector<pair<int8_t,int8_t>> vertex_cri_Bi;
 
         /// variables for partition-based IO management
         uint partition_number = 0;       //the number of partitions
+        vector<vector<int>> borderVectors;    //boundary vertices of each partition
+//        vector<bool> BoundaryTag;
+        vector<int8_t> BoundaryTag;//0: non-boundary vertex; 1: half-connected boundary vertex; 2: full-connected boundary vertex
+        vector<vector<int>> borderFull; //full connected boundary vertices
+        vector<vector<MCEdgeT>> ShortcutsMC;//shortcuts of the boundary vertices of each partition
+        vector<vector<MCEdgeT>> NeighborsMC;    //adjacent list of each partition
+//        vector<vector<MCEdgeT>> Neighbors;
+        vector<vector<MCEdge>> MCEdges;
+        vector<vector<MCEdgeT>> MCEdgesT;
 
-        vector<int> partitions_info;    //vector for storing the info of partitions, start vertex id
+
+//        vector<int> partitions_info;    //vector for storing the info of partitions, partition_num+1, start vertex id
+        vector<vector<int>> cluster_to_node;//from cluster to vertices
         vector<usint> node_to_cluster;//used to store the partition id of node
         vector<int> cluster_to_IO;  //map of recording visited partitions and corresponding #IO
         vector<bool> partitions_read;   //flag of whether a partition has been read
         int partition_left = 0;
-        double alpha = 0.9;//1;//   // threshold of One-Hop algorithm
-        double alpha_multi = 0.9;//1;// // threshold of Multi-Hop algorithm
-        double alpha_bi = 0.6;//0.9;//  // threshold of BiMulti-Hops algorithm
+        double alpha = 0.9;//0.8;//0.9;//0.6;     // threshold of One-Hop algorithm
+        double alpha_multi = 0.9;//0.8;//0.9;//0.9;//0.6;  // threshold of Multi-Hop algorithm
+        double alpha_bi = 0.9;//0.6;//0.6;//  // threshold of BiMulti-Hops algorithm
+        double mu = 0.8;
 
+        string partMethod="DC";//DC: determine clustering; Metis
+        string aggregateStrategy = "wave";
+        string query_type = "all";  // S M L all R
 
         /// Common Functions
 //        void MCReadGraph_MCEdges(string filename);  //one-off edges reading for MC-graph
@@ -566,9 +592,35 @@ namespace gbxxl{
         void CommonInitiation_IO();     //Initiation function for each round of IO-efficient algorithms
 
         void MC_Evaluate_IO(const string& qtype);  //Entry for io-efficient algorithm
+        void MC_Evaluate_EXP1(const string& qtype);    //Experiment 1
+        void MC_Evaluate_EXP2(const string& qtype);    //Experiment 2
+        void MC_Evaluate_EXP3(const string& qtype);    //Experiment 3
+        void MC_Evaluate_EXP456(const string& qtype);  //Experiment 4,5,6
 
+        /*** For Multi-Pass algorithm ***/
+        double MC_Multipass(const string& qtype, int algo_choice);//Function for MCSP by Dijkstra, return average query time
+        double MC_Multipass_one(const string& filename, int algo_choice);//Function for MCSP by Dijkstra
+
+        /// EM_Dijk
+        void EM_Preprocess();//Function for the preprocessing of EM_Dijk
+        void EM_Dijk_Initiation(vector<HotPool>& hotPools);  //function of initialising multi-pass algorithms in each round
+        Distance EM_Dijk(int node_start, int node_end, vector<HotPool>& hotPools); // the EM_Dijk algorithm
+        void EM_ReadCluster(int category_id,NodeId ID1,vector<EdgePairW>& resultVE, vector<HotPool>& hotPools);//function of reading partition from disk
+
+        /// MUL_Dijk
+        Distance Dijkstra_IO_new(int node_start, int node_end, HotPool4<VectorMCEdgesEMTuple4_DijkIO>& myHotPool); // the Multi-pass Dijkstra based on LRU partition management
+        Distance Dijkstra_IO(int node_start, int node_end, VectorMCEdgesEMTuple_DijkIO& EMMCEdges); // the Multi-pass Dijkstra based on stxxl vector
+        template<class T>
+        void ReadClusterToExternalVectorMC(int target_p_id, T & EMMCEdges);//function of reading partition data to external vector
+//        void ReadGraphToExternalVectorMC(const string& filename);//function of reading graph data to external vector
+        void GraphReadCluster(HotPool2 & mcHotPool,int target_p_id);//function of read partition for Dijkstra_IO
+        void GraphReadCluster3(HotPool3 & mcHotPool,int target_p_id);//function of read partition for HotPool3
         template <class T>
         void GraphReadCluster4(HotPool4<T> & mcHotPool,int target_p_id);//function of read partition for HotPool4
+
+        /// MUL_BiDijk
+        Distance BiDijkstra_IO(int node_start, int node_end, VectorMCEdgesEMTuple_BiDijkIO& EMMCEdges); // the Multi-pass Dijkstra based on stxxl vector
+        Distance BiDijkstra_IO_new(int node_start, int node_end, HotPool4<VectorMCEdgesEMTuple4_BiDijkIO>& myHotPool); // the Multi-pass Dijkstra based on stxxl vector
 
         /*** For One-Pass algorithms ***/
         double MC_OnePass(const string& qtype,int algo_choice);//Entry for one-pass algorithms
@@ -577,12 +629,16 @@ namespace gbxxl{
         void OnePassClear_IO(int algo_choice);
 
         /// One-hop without io optimization
+        void EM_MC_OneHop_NoIO(int node_start, int node_end);   //One-hop algorithm without io optimization
         void EM_MC_OneHop_NoIO_new(int node_start, int node_end);   //One-hop algorithm without io optimization
+        void GraphMCReadCluster_NoIO(MCHotPool2 & mcHotPool,int target_p_id);//function of read partition for variants without I/O optimization
 
         /// Multi-hops without io optimization
+        void EM_MC_MultiHop_NoIO(int node_start, int node_end);//Function for multi-hops algorithm with io optimization
         void EM_MC_MultiHop_NoIO_new(int node_start, int node_end);//Function for multi-hops algorithm with io optimization
 
         /// BiMulti-hops without io optimization
+        void EM_MC_BiMultiHop_NoIO(int node_start, int node_end);
         void EM_MC_BiMultiHop_NoIO_new(int node_start, int node_end);
 
         /// One-hop with io optimization
@@ -594,8 +650,39 @@ namespace gbxxl{
 
         /// BiMulti-hops with io optimization
         void EM_MC_BiMultiHop(int node_start, int node_end);
-        void GraphMCReadCluster_New_Bi(MCHotPool<VectorMCEdgesEMTuple_IO_Bi> & mcHotPool,int target_p_id,vector<int8_t>& cluster_to_bi,int8_t direction,vector<bool>& clusterRead);//function of reading partition for one-pass algorithms with io optimization NodeId& ID1,
+        void GraphMCReadCluster_New_Bi(MCHotPool<VectorMCEdgesEMTuple_IO_Bi> & mcHotPool,int target_p_id, vector<int8_t>& cluster_to_bi, int8_t direction, vector<bool>& clusterRead);//function of reading partition for one-pass algorithms with io optimization NodeId& ID1,
 //        void GraphMCReadCluster_New_Bi(MCHotPool & mcHotPool,NodeId& ID1,int target_p_id,vector<int8_t>& cluster_to_bi, bool flag_reverse);//function of reading partition for one-pass algorithms with io optimization
+
+        /// Partitioned Shortcut Search: SMHP
+
+        void DijkstraSC(int bid, int cri_i, vector<NodeId>& borderVector, vector<NodeId>& testBorder, vector<int>& testResult, unordered_set<NodeId>& newNeighbor);
+        void ShortcutVertex(int bid, int pid, vector<vector<MCEdgeT>>& parResult);
+        void ShortcutVertexV(vector<int>& p, int pid, vector<vector<MCEdgeT>>& parResult);
+        void ReadPartition(int pid, vector<MCEdgeT>& NeighborsP);
+        void ReadPartitionBi(int pid, vector<MCEdgeT>& NeighborsP);
+        void ReadPartitionMCEdges(int pid);
+        void ReadMCEdges(const string& filename);
+        void WritePartitionShortcut(int pid, vector<NodeId>& borderVector, vector<vector<MCEdgeT>>& scResult, bool ifbin);
+        void ShortcutConstruct(int pid, vector<vector<MCEdgeT>>& parResult);
+        void ShortcutConstructV(vector<NodeId>& p, vector<vector<vector<MCEdgeT>>>& scResult, vector<double>& timeRecord);
+        void ShortcutConstruction();//entry of shortcut construction
+        void GetBoundary();//compute the boundary vertex and write to disk
+        void ReadBoundary(string filename);//read the boundary vertex
+        void ThreadDistribute(vector<NodeId>& vertices, vector<vector<NodeId>>& processID);
+        pair<int,unsigned long long> DFS_CC(int pid, vector<MCEdgeT> & Edges, unordered_set<int> & set_A, int nodenum);// return Node number and edge number of LCC
+
+        void EM_MC_ShortcutSearch(int node_start,int node_end);
+        void DijkstraPartitionMC(int node_start, int node_end, vector<pair<NodeId,vector<Distance>>>& localDisV);
+        void DijkstraPartition(int node_start,  int cri_i, vector<MCEdgeT>& NeighborsP, unordered_map<NodeId,vector<Distance>>& localDis);
+        void DijkstraPartitionBi(int node_start,  int cri_i, vector<MCEdgeT>& NeighborsP, unordered_map<NodeId,vector<Distance>>& localDis);
+        void ReadPartitionShortcut(int target_p_id, MCHotPool<VectorMCEdgesEMTuple_IO> & mcHotPool);
+
+        /// Partitioned Shortcut Search: BSMHP
+        void EM_MC_ShortcutSearch_Bi(int node_start,int node_end);
+        void ReadPartitionShortcut_Bi(int target_p_id, MCHotPool<VectorMCEdgesEMTuple_IO_Bi> & mcHotPool, vector<int8_t>& cluster_to_bi, int8_t direction, vector<bool>& clusterRead);
+
+
+        void CorrectnessCheck(int runtimes);
 
         static int Weight_to_category(int w);
         void EM_IORecord(Stats& a);
@@ -604,6 +691,8 @@ namespace gbxxl{
         bool EM_JudgeEmptyBi(vector<PriorityQueue*> &em_mc_pqueue, vector<PriorityQueue2*> &em_mc_pqueue_r);
         void InfoPrint() const;//function of printing basic information
         void MemoryCheck(int algo_choice, uint mem, bool &flag_exit);
+
+
 
         list<int> Dij_getPath(vector<NodeId> & pre, NodeId ID1,NodeId ID2);
         list<int> BiDij_getPath(vector<NodeId> & pre,vector<NodeId> & pre_b,NodeId ID1,NodeId ID2,NodeId terminate_id);

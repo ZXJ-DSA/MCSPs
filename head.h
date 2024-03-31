@@ -26,7 +26,9 @@
 #include <bitset>
 #include <sys/stat.h>
 #include <sys/types.h>
-#include "Timer.h"
+#include <boost/thread/thread.hpp>
+#include <boost/algorithm/string.hpp>
+#include "Heap.h"
 #include "memory_info.h"
 
 using namespace std;
@@ -34,7 +36,7 @@ using namespace std;
 typedef int NodeId;
 typedef int EdgeWeight;
 typedef unsigned int uint;
-typedef unsigned short int usint;
+typedef unsigned short int usint;//0-65535
 typedef unsigned short int RangeId;
 //typedef unsigned int uint;
 typedef unsigned int Distance;//long long
@@ -69,29 +71,38 @@ typedef tuple<int,int,int> MCWeight3;
 #define INF INT32_MAX
 #define Edge_SZ 16 //the memory size of EdgePairW, 3+1 int (16 bytes)
 #define MCEdge_SZ 28 //the memory size of MCEdgeT, 7 int (28 bytes)
-#define INF100 100000000 //one hundred million
+#define INF100 1000000 //one million
+
+const long int BLK_SZ = 4194304*8;  //1024*1024*4 bytes(i.e. 4MB) sizeof blk for I/O
+const int SZ_VERTEX = sizeof(int);
+const int VERTEX_PER_BLK = BLK_SZ/SZ_VERTEX;//number of int readable, 1024*1024*8
 
 /*** Parameters for specifying ***/
-//const char* disk_conf = "disk=/Users/zhouxj/stxxl.tmp, 20 GiB, syscall unlink";
-const char* disk_conf = "disk=/media/TraminerData/Xinjie/stxxl.tmp, 100 GiB, syscall unlink";//disk configuration for stxxl  "disk=e:\stxxl.tmp, 10 GiB, wincall delete"
-//char* DataPath = "/Users/zhouxj/Documents/1-Research/Datasets/";//
-char* DataPath = "/media/TraminerData/Xinjie/Datasets/";//  //the data path of datasets  "E:/Datasets/"
+const char* disk_conf = "disk=/Users/zhouxj/stxxl.tmp, 20 GiB, syscall unlink";
+//const char* disk_conf = "disk=/media/TraminerData/Xinjie/stxxl.tmp, 200 GiB, syscall unlink";//disk configuration for stxxl  "disk=e:\stxxl.tmp, 10 GiB, wincall delete"
+//const char* disk_conf = "disk=/home/xzhouby/datasets/stxxl.tmp, 300 GiB, syscall unlink";//disk configuration for stxxl  "disk=e:\stxxl.tmp, 10 GiB, wincall delete"
+//const char* disk_conf = "disk=/home/data/xzhouby/datasets/stxxl.tmp, 300 GiB, syscall unlink";//disk configuration for stxxl  "disk=e:\stxxl.tmp, 10 GiB, wincall delete"
+char* DataPath = "/Users/zhouxj/Documents/1-Research/Datasets/";//
+//char* DataPath = "/media/TraminerData/Xinjie/Datasets/";//  //the data path of datasets  "E:/Datasets/"
+//char* DataPath = "/home/xzhouby/datasets/";//
+//char* DataPath = "/home/data/xzhouby/datasets/";//
 
 ///Basic information
 int NUM_OF_CRITERIA = 5; //the maximal number of criteria in the graph data
 int num_of_cri = 3;         //the number of criteria to be processed
-int run_times = 100;        //50, 30, 20
-string query_type = "all";  // S M L all R
-string partition_type = "ave";
+int run_times = 2;        //50, 30, 20
+//string query_type = "all";  // S M L all R
+//string partition_type = "ave";
 bool ifOptimal = false;     // flag of computing the optimal IO
 bool ifMu = false;          //if test the parameter of Mu
 uint PartitionNumber = 2048;    //default 2048, th number of partitions
-uint PartitionSize = 256;//1024;//15360;//4096;//   //default 1024 KB, the memory size of one partition, unit(KB) 1024
+uint PartitionSize = 256;//15360;//4096;//   //default 1024 KB, the memory size of one partition, unit(KB) 1024
+const uint Partition_SZ = 256*1024;   //default 262144 bytes(256KB), the memory size of io buffer block, unit(byte)
 const uint Block_SZ = 262144;   //default 262144 bytes(256KB), the memory size of io buffer block, unit(byte)
 const uint WeightPowMax = 20;//20;   //default 20, the power of maximal edge weight, 2^20=1,048,576(1.05 million)
 const uint MinMemThreshold = 32;//128; //default 128 MB, the minimal threshold of memory size for graph data
-const uint MuForEM = 4;//9;//  //default 0.4, the memory portion for external vector
-const uint MuForEM_Bi = 3;//1;//  //default 0.3, the memory portion for external vector
+const uint MuForEM = 4;  //default 0.4, the memory portion for external vector
+const uint MuForEM_Bi = 3;  //default 0.3, the memory portion for external vector
 bool ifFile = false;    //default false, whether to store the output content to file
 bool ifshow = true;
 
@@ -99,10 +110,10 @@ bool ifshow = true;
 const uint MemGraph_EMDijk = 1446;  //the memory size for graph data(i.e. adjacency lists), unit(MB)
 const uint MemGraph_DijkIO = 1349;  // the memory size for graph data(i.e. adjacency lists), unit(MB)
 const uint MemGraph_BiDijkIO = 1235;  // the memory size for graph data(i.e. adjacency lists), unit(MB)
-const uint MemGraph_NoIO = 1103;//4948;//  // the memory size for graph data of OHP-LRU and MHP-LRU (i.e. adjacency lists), unit(MB)
-const uint MemGraph_NoIO_Bi = 664;//4808;//  //the memory size for graph data of BMHP-LRU (i.e. adjacency lists), unit(MB)
-const uint MemGraph_IO = 1080;//4945;//   // the memory size for graph data of OHP and MHP (i.e. adjacency lists), unit(MB)
-const uint MemGraph_IO_Bi = 641;//4805;//   //the memory size for graph data of BMHP (i.e. adjacency lists), unit(MB)
+const uint MemGraph_NoIO = 1103;  // the memory size for graph data(i.e. adjacency lists), unit(MB)
+const uint MemGraph_NoIO_Bi = 664;  //the memory size for graph data(i.e. adjacency lists), unit(MB)
+const uint MemGraph_IO = 1080;   // the memory size for graph data(i.e. adjacency lists), unit(MB)
+const uint MemGraph_IO_Bi = 50;//;641;   //the memory size for graph data(i.e. adjacency lists), unit(MB)
 
 
 ///for EM_Dijk
@@ -112,15 +123,18 @@ const uint BlockPerPage = 1; //default 4, the memory size of one page in externa
 const uint PageNumberEMDijk = (0.1 * MemGraph_EMDijk / WeightPowMax) * 4;//(0.1 * MemGraph_EMDijk / WeightPowMax) * 4;//the number of pages in memory, 10% of memory is used for stxxl vector
 const uint PageNumber4_Dijk = MemGraph_NoIO/4*4;//64*4;//100*4;// //default 32MB, the number of pages in memory, overall memory cost for one vector is 32*1=32MB
 const uint PageNumber4_BiDijk = 0.1*MemGraph_NoIO_Bi*4;// //default 32MB, the number of pages in memory, overall memory cost for one vector is 32*1=32MB
-const uint PageNumber4_NoIO = MemGraph_NoIO/2*4;//64*4;//100*4;// //default 32MB, the number of pages in memory, overall memory cost for one vector is 32*1=32MB
+const uint PageNumber4_NoIO = MemGraph_NoIO/4*4;//64*4;//100*4;// //default 32MB, the number of pages in memory, overall memory cost for one vector is 32*1=32MB
 const uint PageNumber4_NoIO_Bi = MemGraph_NoIO/4*4;//32*4;//MemGraph_NoIO_Bi/2*4;//64*4;//100*4;// //default 32MB, the number of pages in memory, overall memory cost for one vector is 32*1=32MB
 const uint PageNumberIO = MemGraph_IO * MuForEM *4 /10;//32*4; //default 32, the number of pages in memory, overall memory cost for one vector is 32*1=32MB 0.85*
 const uint PageNumberIO_Bi = MemGraph_IO_Bi * MuForEM_Bi *4 /10;//32*4; //default 32, the number of pages in memory, overall memory cost for one vector is 32*1=32MB
+uint Partition_N_SC = 1+0.75*(10-MuForEM)*MemGraph_IO*1024/(10*PartitionSize*0.4);// the number of partitions in memory/
 uint Partition_N = 1+0.75*(10-MuForEM)*MemGraph_IO*1024/(10*PartitionSize);// the number of partitions in memory/
 uint Partition_N_Bi = 2+0.75*(10-MuForEM_Bi)*MemGraph_IO_Bi*1024/(10*PartitionSize);// the number of partitions in memory, memory cost: BASIC_SZ
 
 ///for algorithms without io optimization
 const uint PartitionNumber_DijkIO_new = 1+0.75*(MemGraph_DijkIO-PageNumber4_Dijk/4)*1024/PartitionSize;//the number of pages in stxxl vector for algorithms without io optimization, memory cost: BASIC_SZ
+const uint PageNumber4_Dijknew = MemGraph_DijkIO*1024/256;    //memory/partitionSize
+const uint PageNumber4_BiDijknew = MemGraph_BiDijkIO*1024/256;
 const uint PartitionNumber_BiDijkIO_new = 2+0.75*(MemGraph_BiDijkIO-PageNumber4_BiDijk/4)*1024/PartitionSize;//the number of pages in stxxl vector for algorithms without io optimization, memory cost: BASIC_SZ MemGraph_DijkIO
 const uint PartitionNumber_NoIO = 1+0.75*(MemGraph_NoIO-PageNumber4_NoIO/4)*1024/PartitionSize;//the number of pages in stxxl vector for algorithms without io optimization, memory cost: BASIC_SZ
 const uint PartitionNumber_NoIO_Bi = 2+0.75*(MemGraph_NoIO_Bi-PageNumber4_NoIO/4)*1024/PartitionSize;//the number of pages in stxxl vector for algorithms without io optimization, memory cost: BASIC_SZ 0.75*
@@ -132,14 +146,18 @@ const uint PageNumber_NoIO_Bi = MemGraph_NoIO_Bi*1024/(BlockPerPage*Block_SZ/102
 
 ///External priority queue (overall memory cost for one priority queue is about 50MB in practice)
 const uint QMemory = 8*Block_SZ;//8*Block_SZ;// default 8*Block_SZ, which consume 4MB for each queue
-const uint PQMemory = 32;//8;//32;// //default 32 MB
-//const uint PQMemory = 8;//8;//32;// //default 32 MB
+const uint PQMemory = 512; //32;//8;//64;// //default 32 MB
+const uint PQMemoryPre = 1024;
+const uint MEMORY_FOR_PRIORITY_QUEUE_Pre = PQMemoryPre*1024*1024;//default 32 MB, internal memory for priority queue
+const uint PRIORITY_QUEUE_MAX_SIZE_Pre = MEMORY_FOR_PRIORITY_QUEUE_Pre/256;//1024; //default MEMORY_FOR_PRIORITY_QUEUE/1024, amounts to 33554432 maximal number of items in stxxl priority queue, the actual number can be somewhat larger
+const uint mem_for_pools_pre = MEMORY_FOR_PRIORITY_QUEUE_Pre/4;    //default 8 MB, internal memory for prefetching
 const uint MEMORY_FOR_PRIORITY_QUEUE = PQMemory*1024*1024;//default 32 MB, internal memory for priority queue
 const uint PRIORITY_QUEUE_MAX_SIZE = MEMORY_FOR_PRIORITY_QUEUE/256;//1024; //default MEMORY_FOR_PRIORITY_QUEUE/1024, amounts to 33554432 maximal number of items in stxxl priority queue, the actual number can be somewhat larger
 const uint PRIORITY_QUEUE_MAX_SIZE_BI = MEMORY_FOR_PRIORITY_QUEUE/256; //default MEMORY_FOR_PRIORITY_QUEUE/256, amounts to 134,217,728 maximal number of items in stxxl priority queue, the actual number can be somewhat larger
 const uint mem_for_pools = MEMORY_FOR_PRIORITY_QUEUE/4;    //default 8 MB, internal memory for prefetching
 ///External sorter
-const uint MEMORY_FOR_SORTER = 1024*1024*1024; //default 1024 MB, internal memory for sorter
+//const uint MEMORY_FOR_SORTER = 1024*1024*1024; //default 1024 MB, internal memory for sorter
+const uint MEMORY_FOR_SORTER = 10*1024*1024*1024; //default 1024 MB, internal memory for sorter
 
 ///Intermediate parameters
 const uint Partition_MCEdgeSZ = PartitionSize*1024/MCEdge_SZ;//default 9362, the number of MCEdges that one partition can hold at most, 9362*28bytes=256KB
@@ -427,13 +445,15 @@ struct PairComparator {
     }
     std::pair<NodeId,uint> min_value() const {
         std::pair<NodeId,uint> a;
-        a.first=0;
+//        a.first=0;
+        a.first=std::numeric_limits<NodeId>::min();
         a.second=std::numeric_limits<uint>::min();
         return a;
     }
     std::pair<NodeId,uint> max_value() const {
         std::pair<NodeId,uint> a;
-        a.first=0;
+//        a.first=0;
+        a.first=std::numeric_limits<NodeId>::max();
         a.second=std::numeric_limits<uint>::max();
         return a;
     }
@@ -464,14 +484,29 @@ struct PQEdgePairCompareLess
 {
     bool operator () (const pair<uint,EdgePair>& a, const pair<uint,EdgePair>& b) const
     {
-        return (a.first > b.first);
-//        return (a.first > b.first) || (b.first <= a.first && (a.second.ID2 > b.second.ID2));
+//        return (a.first > b.first);
+        return (a.first > b.first) || (b.first <= a.first && (a.second.ID2 > b.second.ID2));
     }
 
     pair<uint,EdgePair> min_value() const
     {   pair<uint,EdgePair> a;
         a.first=std::numeric_limits<uint>::max();
         a.second=EdgePair(std::numeric_limits<NodeId>::max(),std::numeric_limits<NodeId>::max());
+        return a; }
+};
+
+struct IntPairCompareLess
+{
+    bool operator () (const pair<int,int>& a, const pair<int,int>& b) const
+    {
+//        return (a.first > b.first);
+        return (a.second > b.second) || (b.second <= a.second && (a.first > b.first));
+    }
+
+    pair<int,int> min_value() const
+    {   pair<int,int> a;
+        a.first=std::numeric_limits<int>::max();
+        a.second=std::numeric_limits<NodeId>::max();
         return a; }
 };
 //function of returning the peak memory usage of the program
@@ -481,7 +516,7 @@ void PeakMemory(){
 }
 
 //created by Mengxuan, modified by Xinjie
-namespace benchmark {
+/*namespace benchmark {
 
 #define NULLINDEX 0xFFFFFFFF
 
@@ -705,6 +740,6 @@ namespace benchmark {
         // An array of positions for all elements.
         std::vector<node_t> position;
     };
-}
+}*/
 
 #endif
