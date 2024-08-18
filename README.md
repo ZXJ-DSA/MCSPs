@@ -1,6 +1,6 @@
 ## Introduction
 
-This is the reference code of the TKDE paper "I/O-Efficient Multi-Criteria Shortest Paths Query Processing on Large Graphs" (submitted). Please refer to the paper for the algorithm details.
+This is the implementation code of the TKDE paper "I/O-Efficient Multi-Criteria Shortest Paths Query Processing on Large Graphs". Please refer to the paper for the algorithm details.
 
 ## Algorithms
 
@@ -19,3 +19,17 @@ For your convenience, the example processed graph data (US) are provided in foll
 
 `g++` and `STXXL 1.4.1`.
 
+
+## Reference
+
+If you found any of our implimentations useful, please cite the appropriate references, listed below:
+
+```
+@article{zhou2024efficient,
+  title={I/O-Efficient Multi-Criteria Shortest Paths Query Processing on Large Graphs},
+  author={Zhou, Xinjie and Huang, Kai and Li, Lei and Zhang, Mengxuan and Zhou, Xiaofang},
+  journal={IEEE Transactions on Knowledge and Data Engineering},
+  year={2024},
+  publisher={IEEE}
+}
+```
